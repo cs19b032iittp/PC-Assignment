@@ -1,10 +1,26 @@
 #include <iostream>
 #include <omp.h>
 #include <vector>
-#include <map>
+#include <unordered_map>
 #include <cmath>
 #include <utility>
 using namespace std;
+
+struct hash_pair {
+    template <class T1, class T2>
+    size_t operator()(const pair<T1, T2>& p) const
+    {
+        auto hash1 = hash<T1>{}(p.first);
+        auto hash2 = hash<T2>{}(p.second);
+ 
+        if (hash1 != hash2) {
+            return hash1 ^ hash2;             
+        }
+         
+        // If hash1 == hash2, their XOR is zero.
+          return hash1;
+    }
+};
 
 int main()
 {
@@ -27,8 +43,8 @@ int main()
         {1}};
     vector<int> degrees = {4, 1, 1, 3, 3, 1, 1, 3, 1, 1, 1};
     pair startingEdge = {r, adjacencyList[r - 1][0]};
-    map<pair<int, int>, pair<int, int>> successor, predecessor;
-    map<int, pair<int, int>> eulerTour;
+    unordered_map<pair<int, int>, pair<int, int>, hash_pair> successor, predecessor;
+    unordered_map<int, pair<int, int>> eulerTour;
 
 // step1: update predecessor and successors
 #pragma omp parallel for
@@ -59,7 +75,7 @@ int main()
 
     // Step3: label the edges (list ranking)
     pair edge = startingEdge;
-    map<pair<int, int>, int> rank;
+    unordered_map<pair<int, int>, int, hash_pair> rank;
     int count = 1;
     for (; true;)
     {
@@ -71,7 +87,7 @@ int main()
     }
 
     // Step4: Identify parents
-    map<int, int> parent;
+    unordered_map<int, int> parent;
     
     #pragma omp parallel for
     for (int i = 1; i < m; i++)
