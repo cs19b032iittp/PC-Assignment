@@ -24,12 +24,11 @@ struct hash_pair {
 
 int main()
 {
-
-    int n = 11; // number of nodes
-    omp_set_num_threads(n);
-    int m = 2 * (n - 1); // number of edges
-    int r = 8;           // root vertex;
-    vector<vector<int>> adjacencyList = {
+    int n = 11;
+    int m = 2 * (n-1);
+    int r = 8;
+    vector<vector<int>> adjacencyList = 
+    {
         {2, 10, 11, 8},
         {1},
         {4},
@@ -40,63 +39,107 @@ int main()
         {4, 1, 5},
         {5},
         {1},
-        {1}};
-    vector<int> degrees = {4, 1, 1, 3, 3, 1, 1, 3, 1, 1, 1};
-    pair startingEdge = {r, adjacencyList[r - 1][0]};
-    unordered_map<pair<int, int>, pair<int, int>, hash_pair> successor, predecessor;
-    unordered_map<int, pair<int, int>> eulerTour;
+        {1}
+    };
+    vector<int> degrees = { 4, 1, 1, 3, 3, 1, 1, 3, 1, 1, 1};
+    int count = 0;
+    unordered_map<pair<int, int>, int, hash_pair> hash_map;
+    vector<pair<int,int>> edges(m, {-1,-1});
+    for (int i = 0; i < n; i++)
+    {
+        int v = i + 1;
+        int d = degrees[i];
+        for (int j = 0; j < d; j++)
+        {
+            pair p1 = {adjacencyList[i][j], v};
+            edges[count] = p1;
+            hash_map[p1] = count++;
 
-// step1: update predecessor and successors
-#pragma omp parallel for
+        }
+    }
+
+    pair startingEdge = {r, adjacencyList[r - 1][0]};
+    vector<int> successor(m,-1), predecessor(m, -1);
+
+    // step1: update predecessor and successors
+    omp_set_num_threads(n);
+    #pragma omp parallel for shared(count)
     for (int i = 0; i < n; i++)
     {
         int v = i + 1;
         int d = degrees[i];
         
-        #pragma omp parallel for
+        #pragma omp parallel for 
         for (int j = 0; j < d; j++)
         {
-
             pair p1 = {adjacencyList[i][j], v};
             pair p2 = {v, adjacencyList[i][(j + 1) % (d)]};
-
-            successor[p1] = p2;
-            predecessor[p2] = p1;
+        
+            successor[hash_map[p1]] = hash_map[p2];
+            predecessor[hash_map[p2]] = hash_map[p1];
         }
     }
 
-    // Step2: break the cycle
+    // step2: break the cycle
     int d = degrees[r - 1];
     int u = adjacencyList[r - 1][d - 1];
-    successor[{u, r}] = {-1, -1};
+    successor[hash_map[{u, r}]] = -1;
 
     u = adjacencyList[r - 1][0];
-    predecessor[{r, u}] = {-1, -1};
+    predecessor[hash_map[{r, u}]] = hash_map[{r, u}];
 
-    // Step3: label the edges (list ranking)
-    pair edge = startingEdge;
-    unordered_map<pair<int, int>, int, hash_pair> rank;
-    int count = 1;
-    for (; true;)
-    {
-        eulerTour[count] = edge;
-        rank[edge] = count++;
-        edge = successor[edge];
-        if (edge.first == -1)
-            break;
+
+    // step3: label the edges(list ranking on predecessors)
+    omp_set_num_threads(m);
+    int limit=(int) (log2(m)+1);
+    vector<int> dist(m, -1);
+    
+    // initialization of dist[]
+    #pragma omp parallel for
+    for(int i=0;i<m;i++){
+        if(edges[i]==startingEdge){
+            dist[i]=0;
+        }
+        else{
+            dist[i]=1;
+        }
     }
 
-    // Step4: Identify parents
+    for(int j=0;j<limit;j++){
+        vector<int> dist2(m,-1);
+        vector<int> predecessor2(m,-1);
+
+        #pragma omp parallel shared(dist2,predecessor2)
+        {
+            #pragma omp for
+            for(int i=0;i<m;i++){
+                if(edges[i]!=startingEdge){
+                    dist2[i]=dist[i]+dist[predecessor[i]];
+                    predecessor2[i]=predecessor[predecessor[i]];
+                }
+            }
+
+            #pragma omp for
+            for(int i=0;i<m;i++){
+                if(edges[i]!=startingEdge){
+                    predecessor[i]=predecessor2[i];
+                    dist[i]=dist2[i];
+                }
+            }
+        }
+    }
+
+    // step4: Identify the parents
+    vector<int> eulerTour(m,-1);
     unordered_map<int, int> parent;
-    
     #pragma omp parallel for
     for (int i = 1; i < m; i++)
     {
-        pair edge = eulerTour[i];
+        pair edge = edges[i];
         int u = edge.first;
         int v = edge.second;
 
-        if (rank[{u, v}] < rank[{v, u}])
+        if (dist[hash_map[{u,v}]] > dist[hash_map[{u,v}]])
             parent[v] = u;
         else
             parent[u] = v;
@@ -111,32 +154,4 @@ int main()
         cout << p << " is parent of " << c << endl;
     }
 
-    // cout << "Euler Tour: ";
-    // for (auto const &e: eulerTour) {
-    //     int r = e.first;
-    //     pair v = e.second;
-    //     cout << " (" << v.first << ", " << v.second << "), ";
-    // }
-    // cout << "\n";
-
-    // cout << "Successors: ";
-    // for (auto const &s: successor) {
-    //     pair u = s.first;
-    //     pair v = s.second;
-    //     cout << "(" << u.first << ", " << u.second << "):  " << "(" << v.first << ", " << v.second << ")  \n";
-    // }
-
-    // cout << "\nPredecessors: ";
-    // for (auto const &p: predecessor) {
-    //     pair u = p.first;
-    //     pair v = p.second;
-    //     cout << "(" << u.first << ", " << u.second << "):  " << "(" << v.first << ", " << v.second << ")  \n";
-    // }
-
-    // cout << "\nrank: ";
-    // for (auto const &l: rank) {
-    //     pair u = l.first;
-    //     int lbl = l.second;
-    //     cout << "(" << u.first << ", " << u.second << "): " << lbl << " \n";
-    // }
 }
