@@ -142,9 +142,7 @@ int main()
         }
     }
 
-
     // step4: Identify the parents
-    vector<int> eulerTour(m, -1);
     unordered_map<int, int> parent;
     #pragma omp parallel for
     for (int i = 0; i < m; i++)
@@ -160,13 +158,83 @@ int main()
         }
     }
 
-
-    cout << "Rooted tree: \n";
-    for (auto const &pt : parent)
+    vector<int> eulerTour(m, -1);
+    for (int i = 0; i < m; i++)
     {
-        int c = pt.first;
-        int p = pt.second;
+        eulerTour[dist[i]] = hash_map[edges[i]];
+    }
 
-        cout << p << " is parent of " << c << endl;
+    // step5: Assigning the weights
+    vector<int> weight(m, 1);
+    #pragma omp parallel
+    for (int i = 0; i < m; i++)
+    {
+        pair<int, int> edge = edges[eulerTour[i]];
+        int u = edge.first;
+        int v = edge.second;
+
+        if (parent[u] == v)
+        {
+            weight[i] = 0;
+        }
+    }
+
+    // step6: prefix sum
+    vector<int> weight2(m, -1);
+
+    #pragma omp parallel for
+    for (int i = 0; i < m; i++)
+    {
+        weight2[i] = weight[i];
+    }
+
+    for (int i = 0; i < limit; i++)
+    {
+        #pragma omp parallel for
+        for (int j = 0; j < m; j++)
+        {
+            if (j < (int)pow(2, i))
+            {
+                weight2[j] = weight[j];
+            }
+            else
+            {
+                weight2[j] = weight[j] + weight[j - (int)pow(2, i)];
+            }
+        }
+
+        #pragma omp parallel for
+        for (int j = 0; j < m; j++)
+        {
+            weight[j] = weight2[j];
+        }
+    }
+
+    vector<int> pre(n, 0);
+
+    #pragma omp parallel 
+    {
+        #pragma omp for
+        for (int i = 0; i < m; i++)
+        {
+            int u, v;
+            u = edges[eulerTour[i]].first;
+            v = edges[eulerTour[i]].second;
+
+            if (parent[v] == u)
+            {
+                pre[v - 1] = weight[i] + 1;
+            }
+        }
+        
+    }
+    pre[r - 1] = 1;
+
+    // printing preorder traversal
+    cout << "Preorder traversal:\n";
+    for (int i = 0; i < n; i++)
+    {
+
+        cout << (i + 1) << " => " << (pre[i]) << endl;
     }
 }
